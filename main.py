@@ -59,6 +59,19 @@ async def set_private_channel (ctx: commands.Context, player:User) -> None:
         private_channels.append({"user_id":player.id,"channel_id":ctx.channel.id})
         msg = await ctx.send(f"Welcome, {player.display_name}, to your private channel!")
 
+@bot.hybrid_command(name="clear_private_channel", description="Clears the private channel for a player.")
+async def clear_private_channel (ctx: commands.Context, player:User) -> None:
+    private_channels = global_data.get("private_channels")
+    remove_filter = filter(lambda x: x.get("user_id") == player.id, private_channels)
+    count = 0
+    for y in remove_filter:
+        private_channels.remove(y) 
+        count += 1
+    if count == 0:
+        await ctx.send(f"{player.display_name} does not have a private channel set.")
+    else:
+        await ctx.send(f"{player.display_name}'s private channel has been cleared.")
+
 
 #Sync commands when bot run
 @bot.event
