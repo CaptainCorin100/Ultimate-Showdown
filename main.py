@@ -1,8 +1,9 @@
 from typing import Final
 import os
 from dotenv import load_dotenv
-from discord import Intents, Client, Message, app_commands, User
+from discord import Intents, Client, Message, app_commands, User, Button, ButtonStyle, Interaction
 from discord.ext import commands
+from discord.ui import *
 from random import randint, random, choice
 import time
 import json
@@ -26,10 +27,37 @@ global_data = {
 @bot.hybrid_command(name="set_private_channel", description="Sets the private channel for a player.")
 async def set_private_channel (ctx: commands.Context, player:User) -> None:
     private_channels = global_data.get("private_channels")
-    private_channels.append({"user_id":player.id,"channel_id":ctx.channel.id})
-    msg = await ctx.send(f"Welcome, {player.name}, to your private channel!")
-    print(global_data)
-    
+    flag = any(x.get("user_id") == player.id for x in private_channels)
+    if flag:
+        confirm_button = Button(label="Confirm", style=ButtonStyle.green)
+        cancel_button = Button(label="Cancel", style=ButtonStyle.danger)
+
+        async def confirm_button_callback (interaction:Interaction):
+            nonlocal private_channels
+            remove_filter = filter(lambda x: x.get("user_id") == player.id, private_channels)
+            for x in remove_filter:
+                private_channels.remove(x)
+            private_channels.append({"user_id":player.id,"channel_id":interaction.channel.id})
+
+            await interaction.response.edit_message(content="Channel has been updated successfully!", view=None)
+            print(global_data)
+
+        async def cancel_button_callback (interaction:Interaction):
+            confirm_button.disabled = True
+            cancel_button.disabled = True
+            await interaction.response.edit_message(content="Cancelled.", view=None)
+
+        confirm_button.callback = confirm_button_callback
+        cancel_button.callback = cancel_button_callback
+
+        view = View()
+        view.add_item(confirm_button)
+        view.add_item(cancel_button)
+
+        await ctx.send(f"{player.display_name} already has a private channel! Would you like to change it to this one?", view=view)
+    else:
+        private_channels.append({"user_id":player.id,"channel_id":ctx.channel.id})
+        msg = await ctx.send(f"Welcome, {player.display_name}, to your private channel!")
 
 
 #Sync commands when bot run
