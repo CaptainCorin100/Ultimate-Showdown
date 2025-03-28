@@ -1,7 +1,7 @@
 from typing import Final
 import os
 from dotenv import load_dotenv
-from discord import Intents, Client, Message, app_commands, User, Button, ButtonStyle, Interaction
+from discord import Intents, Client, Message, app_commands, User, Button, ButtonStyle, Interaction, TextChannel
 from discord.ext import commands
 from discord.ui import *
 from random import randint, random, choice
@@ -23,6 +23,40 @@ global_data = {
     "private_channels":[]
 }
 
+#Initialise class for individual combat round
+class CombatRound:
+    def __init__(self, participant1:User, participant2:User, channel:TextChannel):
+        self.participant1 = participant1
+        self.participant2 = participant2
+        self.channel = channel
+
+    async def start_round(self):
+        #Setup buttons
+        swift_button = Button(label="Swift Strike", style=ButtonStyle.primary)
+        forceful_button = Button(label="Forceful Strike", style=ButtonStyle.red)
+        block_button = Button(label="Reactive Strike", style=ButtonStyle.gray)
+
+        view = View()
+        view.add_item(swift_button)
+        view.add_item(forceful_button)
+        view.add_item(block_button)
+
+        #Iterate between the two participants
+        for parti in [self.participant1]:
+            #Find the participant's private channel
+            channel1_id = next(x for x in global_data.get("private_channels") if x.get("user_id") == parti.id).get("channel_id")
+            channel1 = bot.get_channel(channel1_id)
+
+            #Send message in private channel
+            await channel1.send(f"{parti.mention}, you are engaged in a contest in {self.channel.jump_url}.\n How do you respond?", view=view)
+
+
+
+@bot.hybrid_command(name="run_contest", description="Runs a contest between two people.")
+async def run_contest (ctx: commands.Context, participant1:User, participant2:User) -> None:
+    combat_round = CombatRound(participant1, participant2, ctx.channel)
+    await combat_round.start_round()
+    await ctx.send("Starting contest...")
 
 @bot.hybrid_command(name="set_private_channel", description="Sets the private channel for a player.")
 async def set_private_channel (ctx: commands.Context, player:User) -> None:
