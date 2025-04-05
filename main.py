@@ -60,7 +60,7 @@ class CombatRound:
         outcome = compare_strikes(views[0].strike_type, StrikeType.FORCEFUL)
         outcome_message = ""
         if outcome == None:
-            outcome_message = "The round ended in a draw!"
+            outcome_message = "The round between {} and {} ended in a draw!".format(participants[0].mention, participants[1].mention)
         else:
             outcome_message = "{}'s attack has overpowered {}!".format(participants[outcome].mention, participants[1-outcome].mention)
 
