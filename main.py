@@ -8,6 +8,8 @@ from random import randint, random, choice
 import time
 import json
 import atexit
+import asyncio
+from enum import Enum
 
 #Load token from .env file
 load_dotenv()
@@ -31,15 +33,8 @@ class CombatRound:
         self.channel = channel
 
     async def start_round(self):
-        #Setup buttons
-        swift_button = Button(label="Swift Strike", style=ButtonStyle.primary)
-        forceful_button = Button(label="Forceful Strike", style=ButtonStyle.red)
-        block_button = Button(label="Reactive Strike", style=ButtonStyle.gray)
-
-        view = View()
-        view.add_item(swift_button)
-        view.add_item(forceful_button)
-        view.add_item(block_button)
+        #Setup the contest options that the participants have access to
+        views:list[ContestOptions] = []
 
         #Iterate between the two participants
         for parti in [self.participant1]:
@@ -48,16 +43,62 @@ class CombatRound:
             channel1 = bot.get_channel(channel1_id)
 
             #Send message in private channel
-            await channel1.send(f"{parti.mention}, you are engaged in a contest in {self.channel.jump_url}.\n How do you respond?", view=view)
+            participant_view = ContestOptions()
+            views.append(participant_view)
+            await channel1.send(f"{parti.mention}, you are engaged in a contest in {self.channel.jump_url}.\n How do you respond?", view=participant_view)
+
+        # tasks = [
+        #     bot.wait_for("interaction")
+        # ]
+        # await asyncio.wait(tasks, return_when=asyncio.ALL_COMPLETED)
+
+        tasks = []
+        for view in views:
+            interaction_wait_task = asyncio.create_task(view.wait())
+            tasks.append(interaction_wait_task)
+
+        done, pending = await asyncio.wait(tasks, return_when=asyncio.ALL_COMPLETED)
+        
+        print(views[0].strike_type)
 
 
+class ContestOptions(View):
+    def __init__(self):
+        super().__init__()
+        self.strike_type = None
 
+    @button(label="Swift Strike", style=ButtonStyle.primary)
+    async def swift_strike (self, interaction: Interaction, button: Button):
+        await interaction.response.send_message("Swift Strike")
+        self.strike_type = StrikeType.SWIFT
+        self.stop()
+
+    @button(label="Forceful Strike", style=ButtonStyle.red)
+    async def forceful_strike (self, interaction: Interaction, button: Button):
+        await interaction.response.send_message("Forceful Strike")
+        self.strike_type = StrikeType.FORCEFUL
+        self.stop()
+
+    @button(label="Reactive Strike", style=ButtonStyle.gray)
+    async def reactive_strike (self, interaction: Interaction, button: Button):
+        await interaction.response.send_message("Reactive Strike")
+        self.strike_type = StrikeType.REACTIVE
+        self.stop()    
+        
+class StrikeType(Enum):
+    SWIFT = "swift"
+    FORCEFUL = "forceful"
+    REACTIVE = "reactive"
+
+# Runs a contest between two users
 @bot.hybrid_command(name="run_contest", description="Runs a contest between two people.")
 async def run_contest (ctx: commands.Context, participant1:User, participant2:User) -> None:
     combat_round = CombatRound(participant1, participant2, ctx.channel)
-    await combat_round.start_round()
     await ctx.send("Starting contest...")
+    await combat_round.start_round()
+    
 
+#Sets a user's private channel to the one it was called in
 @bot.hybrid_command(name="set_private_channel", description="Sets the private channel for a player.")
 async def set_private_channel (ctx: commands.Context, player:User) -> None:
     private_channels = global_data.get("private_channels")
@@ -93,6 +134,7 @@ async def set_private_channel (ctx: commands.Context, player:User) -> None:
         private_channels.append({"user_id":player.id,"channel_id":ctx.channel.id})
         msg = await ctx.send(f"Welcome, {player.display_name}, to your private channel!")
 
+# Removes a user's current private channel
 @bot.hybrid_command(name="clear_private_channel", description="Clears the private channel for a player.")
 async def clear_private_channel (ctx: commands.Context, player:User) -> None:
     private_channels = global_data.get("private_channels")
