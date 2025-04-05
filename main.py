@@ -10,6 +10,7 @@ import json
 import atexit
 import asyncio
 from enum import Enum
+import networkx as nx
 
 #Load token from .env file
 load_dotenv()
@@ -174,6 +175,34 @@ async def clear_private_channel (ctx: commands.Context, player:User) -> None:
         await ctx.send(f"{player.display_name} does not have a private channel set.")
     else:
         await ctx.send(f"{player.display_name}'s private channel has been cleared.")
+
+class TournamentParticipant:
+    def __init__(self, participant:User):
+        self.participant = participant
+        self.former_challengers = set()
+        self.points = 0
+
+class Tournament:
+    def __init__(self, participants:list[User]):
+        self.tournament_participants:list[TournamentParticipant] = []
+        for participant in participants:
+            self.tournament_participants.append(TournamentParticipant(participant))
+        self.rounds = []
+
+    def create_pairings(self):
+        G = nx.Graph()
+
+        G.add_nodes_from(self.tournament_participants)
+
+        for i in range (len(self.tournament_participants)):
+            for j in range (i+1, len(self.tournament_participants)):
+                if not self.tournament_participants[j] in self.tournament_participants[i].former_challengers:
+                    point_diff = abs(self.tournament_participants[j].points - self.tournament_participants[i].points)
+                    G.add_edge(self.tournament_participants[j], self.tournament_participants[i], weight=point_diff)
+
+        best_matches = nx.algorithms.matching.min_weight_matching(G, "weight")
+
+        print(best_matches)
 
 
 #Sync commands when bot run
