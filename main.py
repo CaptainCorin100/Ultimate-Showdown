@@ -35,6 +35,7 @@ class CombatRound:
     async def start_round(self):
         #Setup the contest options that the participants have access to
         views:list[ContestOptions] = []
+        participants = [self.participant1, self.participant2]
 
         #Iterate between the two participants
         for parti in [self.participant1]:
@@ -47,11 +48,7 @@ class CombatRound:
             views.append(participant_view)
             await channel1.send(f"{parti.mention}, you are engaged in a contest in {self.channel.jump_url}.\n How do you respond?", view=participant_view)
 
-        # tasks = [
-        #     bot.wait_for("interaction")
-        # ]
-        # await asyncio.wait(tasks, return_when=asyncio.ALL_COMPLETED)
-
+        #Schedule to wait until both people have replied
         tasks = []
         for view in views:
             interaction_wait_task = asyncio.create_task(view.wait())
@@ -59,7 +56,15 @@ class CombatRound:
 
         done, pending = await asyncio.wait(tasks, return_when=asyncio.ALL_COMPLETED)
         
-        print(views[0].strike_type)
+        #Determine and return the outcome
+        outcome = compare_strikes(views[0].strike_type, StrikeType.FORCEFUL)
+        outcome_message = ""
+        if outcome == None:
+            outcome_message = "The round ended in a draw!"
+        else:
+            outcome_message = "{}'s attack has overpowered {}!".format(participants[outcome].mention, participants[1-outcome].mention)
+
+        return outcome_message
 
 
 class ContestOptions(View):
@@ -67,35 +72,57 @@ class ContestOptions(View):
         super().__init__()
         self.strike_type = None
 
+    def disable_self (self):
+        for child in self.children:
+            if type(child) == Button:
+                child.disabled = True
+        self.stop()
+
     @button(label="Swift Strike", style=ButtonStyle.primary)
     async def swift_strike (self, interaction: Interaction, button: Button):
-        await interaction.response.send_message("Swift Strike")
+        self.disable_self()
         self.strike_type = StrikeType.SWIFT
-        self.stop()
+        await interaction.response.edit_message(content="Interaction submitted.", view=self) 
 
     @button(label="Forceful Strike", style=ButtonStyle.red)
     async def forceful_strike (self, interaction: Interaction, button: Button):
-        await interaction.response.send_message("Forceful Strike")
+        self.disable_self()
         self.strike_type = StrikeType.FORCEFUL
-        self.stop()
+        await interaction.response.edit_message(content="Interaction submitted.", view=self)        
 
     @button(label="Reactive Strike", style=ButtonStyle.gray)
     async def reactive_strike (self, interaction: Interaction, button: Button):
-        await interaction.response.send_message("Reactive Strike")
+        self.disable_self()
         self.strike_type = StrikeType.REACTIVE
-        self.stop()    
+        await interaction.response.edit_message(content="Interaction submitted.", view=self)  
+        
+        
+    
         
 class StrikeType(Enum):
-    SWIFT = "swift"
-    FORCEFUL = "forceful"
-    REACTIVE = "reactive"
+    SWIFT = 0
+    FORCEFUL = 1
+    REACTIVE = 2
+
+#Returns 0, 1, or None depending on which strike wins (or if it is a draw), 
+def compare_strikes(strike1:StrikeType, strike2:StrikeType) -> int:
+    if strike1 == strike2:
+        return None
+    #The strikes are ordered such that each one beats the one higher than it
+    elif (strike1.value + 1) % 3 == strike2.value:
+        return 0
+    else:
+        return 1
+
 
 # Runs a contest between two users
 @bot.hybrid_command(name="run_contest", description="Runs a contest between two people.")
 async def run_contest (ctx: commands.Context, participant1:User, participant2:User) -> None:
     combat_round = CombatRound(participant1, participant2, ctx.channel)
     await ctx.send("Starting contest...")
-    await combat_round.start_round()
+    for i in range(3):
+        msg = await combat_round.start_round()
+        await ctx.send(msg)
     
 
 #Sets a user's private channel to the one it was called in
