@@ -200,10 +200,17 @@ class Tournament:
                     point_diff = abs(self.tournament_participants[j].points - self.tournament_participants[i].points)
                     G.add_edge(self.tournament_participants[j], self.tournament_participants[i], weight=point_diff)
 
-        best_matches = nx.algorithms.matching.min_weight_matching(G, "weight")
+        best_matches:set[tuple[TournamentParticipant]] = nx.algorithms.matching.min_weight_matching(G, "weight")
 
-        print(best_matches)
+        name_matches = []
+        for pairing in best_matches:
+            name_matches.append((pairing[0].participant.display_name, pairing[1].participant.display_name))
+        print(name_matches)
 
+@bot.hybrid_command(name="test_tournament", description="Test")
+async def test_tournament (ctx: commands.Context, player1:User, player2:User, player3:User, player4:User) -> None:
+    tourn = Tournament([player1, player2, player3, player4])
+    tourn.create_pairings()
 
 #Sync commands when bot run
 @bot.event
