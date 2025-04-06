@@ -179,7 +179,7 @@ async def clear_private_channel (ctx: commands.Context, player:User) -> None:
 class TournamentParticipant:
     def __init__(self, participant:User):
         self.participant = participant
-        self.former_challengers = set()
+        self.former_challengers:set[TournamentParticipant] = set()
         self.points = 0
 
 class Tournament:
@@ -201,16 +201,36 @@ class Tournament:
                     G.add_edge(self.tournament_participants[j], self.tournament_participants[i], weight=point_diff)
 
         best_matches:set[tuple[TournamentParticipant]] = nx.algorithms.matching.min_weight_matching(G, "weight")
-
         name_matches = []
-        for pairing in best_matches:
-            name_matches.append((pairing[0].participant.display_name, pairing[1].participant.display_name))
+
+        active_competitors:set[TournamentParticipant] = set()
+        for (p1, p2) in best_matches:
+            name_matches.append((p1.participant.display_name, p2.participant.display_name))
+            p1.former_challengers.add(p2)
+            p2.former_challengers.add(p1)
+
+            active_competitors.add(p1)
+            active_competitors.add(p2)
+
+        inactive_competitors = set(self.tournament_participants) - active_competitors
+
+        message = "# Current Matchups \n"
+        for i, pairing in enumerate(best_matches):
+            message += f"## Match {i+1} \n"
+            message += f"{pairing[0].participant.display_name} vs {pairing[1].participant.display_name} \n"
+
+        message += "# People with Byes"
+        for inactive in inactive_competitors:
+            message += inactive.participant.display_name
+
         print(name_matches)
+        return message
 
 @bot.hybrid_command(name="test_tournament", description="Test")
 async def test_tournament (ctx: commands.Context, player1:User, player2:User, player3:User, player4:User) -> None:
     tourn = Tournament([player1, player2, player3, player4])
-    tourn.create_pairings()
+    msg = tourn.create_pairings()
+    await ctx.send(msg)
 
 #Sync commands when bot run
 @bot.event
