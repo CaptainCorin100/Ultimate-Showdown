@@ -11,6 +11,8 @@ import atexit
 import asyncio
 from enum import Enum
 import networkx as nx
+import numpy as np
+import matplotlib.pyplot as plt
 
 #Load token from .env file
 load_dotenv()
@@ -210,9 +212,24 @@ class Tournament:
                     G.add_edge(self.tournament_participants[j], self.tournament_participants[i], weight=weighting)
 
         #Produce set of matches from graph, and add it to the rounds
-        best_matches:set[tuple[TournamentParticipant, TournamentParticipant]] = nx.algorithms.matching.min_weight_matching(G, "weight")
+        best_matches:set[tuple[TournamentParticipant, TournamentParticipant]] = nx.algorithms.matching.min_weight_matching(G, weight="weight")
         self.rounds.append(best_matches)
         name_matches = []
+
+        # plt.figure(figsize=(8, 6))
+        # pos = nx.spring_layout(G, seed=42)  # seed for consistent layout
+        # edge_labels = nx.get_edge_attributes(G, 'weight')
+
+        # nx.draw_networkx_nodes(G, pos, node_size=1000, node_color='lightblue')
+        # nx.draw_networkx_labels(G, pos, font_size=10, font_weight='bold', labels={n: n.participant.display_name for n in G})
+        # nx.draw_networkx_edges(G, pos, width=2, alpha=0.5)
+        # nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_size=8)
+
+        # plt.title("Swiss Pairing Graph (Spring Layout)")
+        # plt.axis('off')
+        # plt.tight_layout()
+        # plt.show(block=False)
+        # plt.pause(0.5)
         
         #Update prior competitors for each person, and calculate active and inactive competitors this round
         active_competitors:set[TournamentParticipant] = set()
@@ -231,11 +248,11 @@ class Tournament:
         message = "# Current Matchups \n"
         for i, pairing in enumerate(best_matches):
             message += f"## Match {i+1} \n"
-            message += f"{pairing[0].participant.display_name} vs {pairing[1].participant.display_name} \n"
+            message += f"{pairing[0].participant.display_name} ({pairing[0].points}) vs {pairing[1].participant.display_name} ({pairing[1].points}) \n"
 
         message += "# People with Byes \n"
         for inactive in inactive_competitors:
-            message += inactive.participant.display_name + "\n"
+            message += inactive.participant.display_name + " (" + str(inactive.points) + ") \n"
 
         print(name_matches)
         return message
