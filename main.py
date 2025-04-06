@@ -181,13 +181,14 @@ class TournamentParticipant:
         self.participant = participant
         self.former_challengers:set[TournamentParticipant] = set()
         self.points = 0
+        self.had_bye = False
 
 class Tournament:
     def __init__(self, participants:list[User]):
         self.tournament_participants:list[TournamentParticipant] = []
         for participant in participants:
             self.tournament_participants.append(TournamentParticipant(participant))
-        self.rounds = []
+        self.rounds:list[set[tuple[TournamentParticipant]]] = []
 
     def create_pairings(self):
         G = nx.Graph()
@@ -197,12 +198,20 @@ class Tournament:
         for i in range (len(self.tournament_participants)):
             for j in range (i+1, len(self.tournament_participants)):
                 if not self.tournament_participants[j] in self.tournament_participants[i].former_challengers:
-                    point_diff = abs(self.tournament_participants[j].points - self.tournament_participants[i].points)
-                    G.add_edge(self.tournament_participants[j], self.tournament_participants[i], weight=point_diff)
+                    #Calculate weighting based on minimising point difference
+                    weighting = abs(self.tournament_participants[j].points - self.tournament_participants[i].points)
 
+                    #Weight people who have not had byes higher to discourage multiple byes
+                    if (not self.tournament_participants[j].had_bye) and (not self.tournament_participants[i].had_bye):
+                        weighting += 20 #Should un-hardcode this number
+                    G.add_edge(self.tournament_participants[j], self.tournament_participants[i], weight=weighting)
+
+        #Produce set of matches from graph, and add it to the rounds
         best_matches:set[tuple[TournamentParticipant]] = nx.algorithms.matching.min_weight_matching(G, "weight")
+        self.rounds.append(best_matches)
         name_matches = []
-
+        
+        #Update prior competitors for each person, and calculate active and inactive competitors this round
         active_competitors:set[TournamentParticipant] = set()
         for (p1, p2) in best_matches:
             name_matches.append((p1.participant.display_name, p2.participant.display_name))
@@ -213,24 +222,31 @@ class Tournament:
             active_competitors.add(p2)
 
         inactive_competitors = set(self.tournament_participants) - active_competitors
+        for inactive in inactive_competitors:
+            inactive.had_bye = True
 
         message = "# Current Matchups \n"
         for i, pairing in enumerate(best_matches):
             message += f"## Match {i+1} \n"
             message += f"{pairing[0].participant.display_name} vs {pairing[1].participant.display_name} \n"
 
-        message += "# People with Byes"
+        message += "# People with Byes \n"
         for inactive in inactive_competitors:
-            message += inactive.participant.display_name
+            message += inactive.participant.display_name + "\n"
 
         print(name_matches)
         return message
 
 @bot.hybrid_command(name="test_tournament", description="Test")
-async def test_tournament (ctx: commands.Context, player1:User, player2:User, player3:User, player4:User) -> None:
-    tourn = Tournament([player1, player2, player3, player4])
-    msg = tourn.create_pairings()
-    await ctx.send(msg)
+async def test_tournament (ctx: commands.Context, player1:User, player2:User, player3:User, player4:User, player5:User) -> None:
+    tourn = Tournament([player1, player2, player3, player4, player5])
+    for j in range(3):
+        msg = tourn.create_pairings()
+        await ctx.send(msg)
+        for (p1, p2) in tourn.rounds[j]:
+            p1.points += randint(0,3)
+            p2.points += randint(0,3)
+            
 
 #Sync commands when bot run
 @bot.event
