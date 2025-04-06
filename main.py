@@ -188,7 +188,10 @@ class Tournament:
         self.tournament_participants:list[TournamentParticipant] = []
         for participant in participants:
             self.tournament_participants.append(TournamentParticipant(participant))
-        self.rounds:list[set[tuple[TournamentParticipant]]] = []
+        self.rounds:list[set[tuple[TournamentParticipant, TournamentParticipant]]] = []
+
+    def standings(self) -> list[TournamentParticipant]:
+        return sorted(self.tournament_participants, key=lambda p: -p.points)
 
     def create_pairings(self):
         G = nx.Graph()
@@ -207,7 +210,7 @@ class Tournament:
                     G.add_edge(self.tournament_participants[j], self.tournament_participants[i], weight=weighting)
 
         #Produce set of matches from graph, and add it to the rounds
-        best_matches:set[tuple[TournamentParticipant]] = nx.algorithms.matching.min_weight_matching(G, "weight")
+        best_matches:set[tuple[TournamentParticipant, TournamentParticipant]] = nx.algorithms.matching.min_weight_matching(G, "weight")
         self.rounds.append(best_matches)
         name_matches = []
         
@@ -246,7 +249,13 @@ async def test_tournament (ctx: commands.Context, player1:User, player2:User, pl
         for (p1, p2) in tourn.rounds[j]:
             p1.points += randint(0,3)
             p2.points += randint(0,3)
-            
+    
+    results = tourn.standings()
+    final_result_msg = "# Final Standings \n"
+    for result in results:
+        final_result_msg += f"{result.participant.display_name}: {result.points} points \n"
+    await ctx.send(final_result_msg)
+
 
 #Sync commands when bot run
 @bot.event
