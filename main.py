@@ -25,50 +25,22 @@ bot = commands.Bot(command_prefix="/", intents=intents)
 
 #Initialise JSON
 global_data = {
-    "private_channels":[]
+    "private_channels":[],
+    "total_rounds":3, #Total number of rounds in the tournament, and number of matches each person can expect to face
+    "total_contests":3, #Total number of contests in any given match
+    "win_points":2, #Points awarded for winning a contest
+    "draw_points":1 #Points awarded for drawing a contest
 }
 
-#Initialise class for individual combat round
-class CombatRound:
-    def __init__(self, participant1:User, participant2:User, channel:TextChannel):
-        self.participant1 = participant1
-        self.participant2 = participant2
-        self.channel = channel
+tourn = None
 
-    async def start_round(self):
-        #Setup the contest options that the participants have access to
-        views:list[ContestOptions] = []
-        participants = [self.participant1, self.participant2]
 
-        #Iterate between the two participants
-        for parti in [self.participant1]:
-            #Find the participant's private channel
-            channel1_id = next(x for x in global_data.get("private_channels") if x.get("user_id") == parti.id).get("channel_id")
-            channel1 = bot.get_channel(channel1_id)
+##### Contest commands and classes
 
-            #Send message in private channel
-            participant_view = ContestOptions()
-            views.append(participant_view)
-            await channel1.send(f"{parti.mention}, you are engaged in a contest in {self.channel.jump_url}.\n How do you respond?", view=participant_view)
-
-        #Schedule to wait until both people have replied
-        tasks = []
-        for view in views:
-            interaction_wait_task = asyncio.create_task(view.wait())
-            tasks.append(interaction_wait_task)
-
-        done, pending = await asyncio.wait(tasks, return_when=asyncio.ALL_COMPLETED)
-        
-        #Determine and return the outcome
-        outcome = compare_strikes(views[0].strike_type, StrikeType.FORCEFUL)
-        outcome_message = ""
-        if outcome == None:
-            outcome_message = "The round between {} and {} ended in a draw!".format(participants[0].mention, participants[1].mention)
-        else:
-            outcome_message = "{}'s attack has overpowered {}!".format(participants[outcome].mention, participants[1-outcome].mention)
-
-        return outcome_message
-
+class StrikeType(Enum):
+    SWIFT = 0
+    FORCEFUL = 1
+    REACTIVE = 2
 
 class ContestOptions(View):
     def __init__(self):
@@ -98,14 +70,6 @@ class ContestOptions(View):
         self.disable_self()
         self.strike_type = StrikeType.REACTIVE
         await interaction.response.edit_message(content="Interaction submitted.", view=self)  
-        
-        
-    
-        
-class StrikeType(Enum):
-    SWIFT = 0
-    FORCEFUL = 1
-    REACTIVE = 2
 
 #Returns 0, 1, or None depending on which strike wins (or if it is a draw), 
 def compare_strikes(strike1:StrikeType, strike2:StrikeType) -> int:
@@ -118,65 +82,60 @@ def compare_strikes(strike1:StrikeType, strike2:StrikeType) -> int:
         return 1
 
 
-# Runs a contest between two users
-@bot.hybrid_command(name="run_contest", description="Runs a contest between two people.")
-async def run_contest (ctx: commands.Context, participant1:User, participant2:User) -> None:
-    combat_round = CombatRound(participant1, participant2, ctx.channel)
+##### Match classes and commands
+
+#Initialise class for individual combat match
+class CombatMatch:
+    def __init__(self, participant1:User, participant2:User, channel:TextChannel):
+        self.participant1 = participant1
+        self.participant2 = participant2
+        self.channel = channel
+
+    async def start_contest(self):
+        #Setup the contest options that the participants have access to
+        views:list[ContestOptions] = []
+        participants = [self.participant1, self.participant2]
+
+        #Iterate between the two participants
+        for parti in [self.participant1]:
+            #Find the participant's private channel
+            channel1_id = next(x for x in global_data.get("private_channels") if x.get("user_id") == parti.id).get("channel_id")
+            channel1 = bot.get_channel(channel1_id)
+
+            #Send message in private channel
+            participant_view = ContestOptions()
+            views.append(participant_view)
+            await channel1.send(f"{parti.mention}, you are engaged in a contest in {self.channel.jump_url}.\n How do you respond?", view=participant_view)
+
+        #Schedule to wait until both people have replied
+        tasks = []
+        for view in views:
+            interaction_wait_task = asyncio.create_task(view.wait())
+            tasks.append(interaction_wait_task)
+
+        done, pending = await asyncio.wait(tasks, return_when=asyncio.ALL_COMPLETED)
+        
+        #Determine and return the outcome
+        outcome = compare_strikes(views[0].strike_type, StrikeType.FORCEFUL)
+        outcome_message = ""
+        if outcome == None:
+            outcome_message = "The contest between {} and {} ended in a draw!".format(participants[0].mention, participants[1].mention)
+        else:
+            outcome_message = "{}'s attack has overpowered {}!".format(participants[outcome].mention, participants[1-outcome].mention)
+
+        return outcome_message
+
+# Runs a match between two users
+@bot.hybrid_command(name="run_match", description="Runs a match between two people.")
+async def run_match (ctx: commands.Context, participant1:User, participant2:User) -> None:
+    combat_match = CombatMatch(participant1, participant2, ctx.channel)
     await ctx.send("Starting contest...")
     for i in range(3):
-        msg = await combat_round.start_round()
+        msg = await combat_match.start_contest()
         await ctx.send(msg)
-    
 
-#Sets a user's private channel to the one it was called in
-@bot.hybrid_command(name="set_private_channel", description="Sets the private channel for a player.")
-async def set_private_channel (ctx: commands.Context, player:User) -> None:
-    private_channels = global_data.get("private_channels")
-    flag = any(x.get("user_id") == player.id for x in private_channels)
-    if flag:
-        confirm_button = Button(label="Confirm", style=ButtonStyle.green)
-        cancel_button = Button(label="Cancel", style=ButtonStyle.danger)
 
-        async def confirm_button_callback (interaction:Interaction):
-            nonlocal private_channels
-            remove_filter = filter(lambda x: x.get("user_id") == player.id, private_channels)
-            for x in remove_filter:
-                private_channels.remove(x)
-            private_channels.append({"user_id":player.id,"channel_id":interaction.channel.id})
-
-            await interaction.response.edit_message(content="Channel has been updated successfully!", view=None)
-            print(global_data)
-
-        async def cancel_button_callback (interaction:Interaction):
-            confirm_button.disabled = True
-            cancel_button.disabled = True
-            await interaction.response.edit_message(content="Cancelled.", view=None)
-
-        confirm_button.callback = confirm_button_callback
-        cancel_button.callback = cancel_button_callback
-
-        view = View()
-        view.add_item(confirm_button)
-        view.add_item(cancel_button)
-
-        await ctx.send(f"{player.display_name} already has a private channel! Would you like to change it to this one?", view=view)
-    else:
-        private_channels.append({"user_id":player.id,"channel_id":ctx.channel.id})
-        msg = await ctx.send(f"Welcome, {player.display_name}, to your private channel!")
-
-# Removes a user's current private channel
-@bot.hybrid_command(name="clear_private_channel", description="Clears the private channel for a player.")
-async def clear_private_channel (ctx: commands.Context, player:User) -> None:
-    private_channels = global_data.get("private_channels")
-    remove_filter = filter(lambda x: x.get("user_id") == player.id, private_channels)
-    count = 0
-    for y in remove_filter:
-        private_channels.remove(y) 
-        count += 1
-    if count == 0:
-        await ctx.send(f"{player.display_name} does not have a private channel set.")
-    else:
-        await ctx.send(f"{player.display_name}'s private channel has been cleared.")
+##### Tournament and round commands and classes
 
 class TournamentParticipant:
     def __init__(self, participant:User):
@@ -245,7 +204,7 @@ class Tournament:
         for inactive in inactive_competitors:
             inactive.had_bye = True
 
-        message = "# Current Matchups \n"
+        message = "# Current Matches \n"
         for i, pairing in enumerate(best_matches):
             message += f"## Match {i+1} \n"
             message += f"{pairing[0].participant.display_name} ({pairing[0].points}) vs {pairing[1].participant.display_name} ({pairing[1].points}) \n"
@@ -259,6 +218,7 @@ class Tournament:
 
 @bot.hybrid_command(name="test_tournament", description="Test")
 async def test_tournament (ctx: commands.Context, player1:User, player2:User, player3:User, player4:User, player5:User) -> None:
+    global tourn
     tourn = Tournament([player1, player2, player3, player4, player5])
     for j in range(3):
         msg = tourn.create_pairings()
@@ -273,6 +233,61 @@ async def test_tournament (ctx: commands.Context, player1:User, player2:User, pl
         final_result_msg += f"{result.participant.display_name}: {result.points} points \n"
     await ctx.send(final_result_msg)
 
+
+##### Private channel commands
+
+#Sets a user's private channel to the one it was called in
+@bot.hybrid_command(name="set_private_channel", description="Sets the private channel for a player.")
+async def set_private_channel (ctx: commands.Context, player:User) -> None:
+    private_channels = global_data.get("private_channels")
+    flag = any(x.get("user_id") == player.id for x in private_channels)
+    if flag:
+        confirm_button = Button(label="Confirm", style=ButtonStyle.green)
+        cancel_button = Button(label="Cancel", style=ButtonStyle.danger)
+
+        async def confirm_button_callback (interaction:Interaction):
+            nonlocal private_channels
+            remove_filter = filter(lambda x: x.get("user_id") == player.id, private_channels)
+            for x in remove_filter:
+                private_channels.remove(x)
+            private_channels.append({"user_id":player.id,"channel_id":interaction.channel.id})
+
+            await interaction.response.edit_message(content="Channel has been updated successfully!", view=None)
+            print(global_data)
+
+        async def cancel_button_callback (interaction:Interaction):
+            confirm_button.disabled = True
+            cancel_button.disabled = True
+            await interaction.response.edit_message(content="Cancelled.", view=None)
+
+        confirm_button.callback = confirm_button_callback
+        cancel_button.callback = cancel_button_callback
+
+        view = View()
+        view.add_item(confirm_button)
+        view.add_item(cancel_button)
+
+        await ctx.send(f"{player.display_name} already has a private channel! Would you like to change it to this one?", view=view)
+    else:
+        private_channels.append({"user_id":player.id,"channel_id":ctx.channel.id})
+        msg = await ctx.send(f"Welcome, {player.display_name}, to your private channel!")
+
+# Removes a user's current private channel
+@bot.hybrid_command(name="clear_private_channel", description="Clears the private channel for a player.")
+async def clear_private_channel (ctx: commands.Context, player:User) -> None:
+    private_channels = global_data.get("private_channels")
+    remove_filter = filter(lambda x: x.get("user_id") == player.id, private_channels)
+    count = 0
+    for y in remove_filter:
+        private_channels.remove(y) 
+        count += 1
+    if count == 0:
+        await ctx.send(f"{player.display_name} does not have a private channel set.")
+    else:
+        await ctx.send(f"{player.display_name}'s private channel has been cleared.")
+
+
+##### General functions to handle the running of the bot
 
 #Sync commands when bot run
 @bot.event
@@ -296,8 +311,6 @@ def main() -> None:
 
     #Run the bot
     bot.run(token=TOKEN)
-
-    
 
 def quit() -> None:
     with open("data.json", "w") as writefile:
