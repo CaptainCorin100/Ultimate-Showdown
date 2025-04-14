@@ -37,11 +37,13 @@ tourn = None
 
 ##### Contest commands and classes
 
+#Enum for different types of strike
 class StrikeType(Enum):
     SWIFT = 0
     FORCEFUL = 1
     REACTIVE = 2
 
+#Provides a set of buttons to interact with a Contest
 class ContestOptions(View):
     def __init__(self):
         super().__init__()
@@ -81,31 +83,53 @@ def compare_strikes(strike1:StrikeType, strike2:StrikeType) -> int:
     else:
         return 1
 
+async def create_contest(user:User, contest_message:str) -> ContestOptions:
+    #Find the participant's private channel
+    channel1_id = next(x for x in global_data.get("private_channels") if x.get("user_id") == user.id).get("channel_id")
+    channel1 = bot.get_channel(channel1_id)
+
+    #Send message in private channel
+    participant_view = ContestOptions()
+
+    await channel1.send(contest_message, view=participant_view)
+
+    return participant_view
 
 ##### Match classes and commands
 
 #Initialise class for individual combat match
 class CombatMatch:
     def __init__(self, participant1:User, participant2:User, channel:TextChannel):
-        self.participant1 = participant1
-        self.participant2 = participant2
+        self.participants:list[User] = [participant1,participant2]
+        self.participant_scores = [0, 0]
         self.channel = channel
 
-    async def start_contest(self):
+    #Generate the message describing the outcome
+    def outcome_message(self, outcome) -> str:
+        outcome_message = ""
+        if outcome == None:
+            outcome_message = "The contest between {} and {} ended in a draw!".format(self.participants[0].mention, self.participants[1].mention)
+        else:
+            outcome_message = "{}'s attack has overpowered {}!".format(self.participants[outcome].mention, self.participants[1-outcome].mention)
+
+        return outcome_message
+
+    #Run the match
+    async def run_match(self):
+        for i in range(3):
+            outcome = await self.run_match_contest()
+            msg = self.outcome_message(outcome)
+            await self.channel.send(msg)
+    
+    #Run a round in the match
+    async def run_match_contest(self):
         #Setup the contest options that the participants have access to
         views:list[ContestOptions] = []
-        participants = [self.participant1, self.participant2]
 
         #Iterate between the two participants
-        for parti in [self.participant1]:
-            #Find the participant's private channel
-            channel1_id = next(x for x in global_data.get("private_channels") if x.get("user_id") == parti.id).get("channel_id")
-            channel1 = bot.get_channel(channel1_id)
-
-            #Send message in private channel
-            participant_view = ContestOptions()
-            views.append(participant_view)
-            await channel1.send(f"{parti.mention}, you are engaged in a contest in {self.channel.jump_url}.\n How do you respond?", view=participant_view)
+        for parti in [self.participants[0]]:
+           view = await create_contest(parti, f"{parti.mention}, you are engaged in a contest in {self.channel.jump_url}.\n How do you respond?")
+           views.append(view)
 
         #Schedule to wait until both people have replied
         tasks = []
@@ -117,22 +141,15 @@ class CombatMatch:
         
         #Determine and return the outcome
         outcome = compare_strikes(views[0].strike_type, StrikeType.FORCEFUL)
-        outcome_message = ""
-        if outcome == None:
-            outcome_message = "The contest between {} and {} ended in a draw!".format(participants[0].mention, participants[1].mention)
-        else:
-            outcome_message = "{}'s attack has overpowered {}!".format(participants[outcome].mention, participants[1-outcome].mention)
-
-        return outcome_message
+        return outcome
+        
 
 # Runs a match between two users
 @bot.hybrid_command(name="run_match", description="Runs a match between two people.")
 async def run_match (ctx: commands.Context, participant1:User, participant2:User) -> None:
     combat_match = CombatMatch(participant1, participant2, ctx.channel)
-    await ctx.send("Starting contest...")
-    for i in range(3):
-        msg = await combat_match.start_contest()
-        await ctx.send(msg)
+    await ctx.send("Starting match...")
+    await combat_match.run_match()
 
 
 ##### Tournament and round commands and classes
