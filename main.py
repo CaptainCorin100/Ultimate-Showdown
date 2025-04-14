@@ -116,7 +116,7 @@ class CombatMatch:
 
     #Run the match
     async def run_match(self):
-        for i in range(3):
+        for i in range(global_data.get("total_contests")):
             outcome = await self.run_match_contest()
             msg = self.outcome_message(outcome)
             await self.channel.send(msg)
@@ -176,6 +176,13 @@ class Tournament:
 
     def standings(self) -> list[TournamentParticipant]:
         return sorted(self.tournament_participants, key=lambda p: -p.points)
+    
+    def standings_message(self) -> str:
+        results = self.standings()
+        final_result_msg = "# Final Standings \n"
+        for result in results:
+            final_result_msg += f"{result.participant.display_name}: {result.points} points \n"
+        return final_result_msg
 
     def create_pairings(self):
         G = nx.Graph()
@@ -243,18 +250,31 @@ class Tournament:
 async def test_tournament (ctx: commands.Context, player1:User, player2:User, player3:User, player4:User, player5:User) -> None:
     global tourn
     tourn = Tournament([player1, player2, player3, player4, player5])
-    for j in range(3):
+    for j in range(global_data.get("total_rounds")):
         msg = tourn.create_pairings()
         await ctx.send(msg)
         for (p1, p2) in tourn.rounds[j]:
             p1.points += randint(0,3)
             p2.points += randint(0,3)
     
-    results = tourn.standings()
-    final_result_msg = "# Final Standings \n"
-    for result in results:
-        final_result_msg += f"{result.participant.display_name}: {result.points} points \n"
-    await ctx.send(final_result_msg)
+    await ctx.send(tourn.standings_message())
+
+@bot.hybrid_command(name="test_real_tournament", description="Test")
+async def test_real_tournament (ctx: commands.Context, player1:User, player2:User, player3:User) -> None:
+    global tourn
+    tourn = Tournament([player1, player2, player3])
+    for j in range(global_data.get("total_rounds")):
+        msg = tourn.create_pairings()
+        await ctx.send(msg)
+        matches = []
+        for (p1, p2) in tourn.rounds[j]:
+            combat_match = CombatMatch(p1.participant, p2.participant, ctx.channel)
+            combat_match_task = combat_match.run_match()
+            matches.append(combat_match_task)
+        results = await asyncio.gather(*matches)
+    
+    print("Done!")
+    await ctx.send(tourn.standings_message())
 
 
 ##### Private channel commands
