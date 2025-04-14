@@ -115,13 +115,13 @@ class CombatMatch:
         return outcome_message
 
     #Run the match
-    async def run_match(self):
+    async def run_match(self) -> tuple[int,int]:
         for i in range(global_data.get("total_contests")):
             outcome = await self.run_match_contest()
             msg = self.outcome_message(outcome)
             await self.channel.send(msg)
-        await self.channel.send(self.participant_scores.__str__())
-        return self.participant_scores
+
+        return tuple(self.participant_scores)
     
     #Run a round in the match
     async def run_match_contest(self):
@@ -172,7 +172,7 @@ class Tournament:
         self.tournament_participants:list[TournamentParticipant] = []
         for participant in participants:
             self.tournament_participants.append(TournamentParticipant(participant))
-        self.rounds:list[set[tuple[TournamentParticipant, TournamentParticipant]]] = []
+        self.rounds:list[list[tuple[TournamentParticipant, TournamentParticipant]]] = []
 
     def standings(self) -> list[TournamentParticipant]:
         return sorted(self.tournament_participants, key=lambda p: -p.points)
@@ -201,7 +201,7 @@ class Tournament:
                     G.add_edge(self.tournament_participants[j], self.tournament_participants[i], weight=weighting)
 
         #Produce set of matches from graph, and add it to the rounds
-        best_matches:set[tuple[TournamentParticipant, TournamentParticipant]] = nx.algorithms.matching.min_weight_matching(G, weight="weight")
+        best_matches:list[tuple[TournamentParticipant, TournamentParticipant]] = list(nx.algorithms.matching.min_weight_matching(G, weight="weight"))
         self.rounds.append(best_matches)
         name_matches = []
 
@@ -260,9 +260,9 @@ async def test_tournament (ctx: commands.Context, player1:User, player2:User, pl
     await ctx.send(tourn.standings_message())
 
 @bot.hybrid_command(name="test_real_tournament", description="Test")
-async def test_real_tournament (ctx: commands.Context, player1:User, player2:User, player3:User) -> None:
+async def test_real_tournament (ctx: commands.Context, player1:User, player2:User, player3:User, player4:User) -> None:
     global tourn
-    tourn = Tournament([player1, player2, player3])
+    tourn = Tournament([player1, player2, player3, player4])
     for j in range(global_data.get("total_rounds")):
         msg = tourn.create_pairings()
         await ctx.send(msg)
@@ -271,7 +271,12 @@ async def test_real_tournament (ctx: commands.Context, player1:User, player2:Use
             combat_match = CombatMatch(p1.participant, p2.participant, ctx.channel)
             combat_match_task = combat_match.run_match()
             matches.append(combat_match_task)
-        results = await asyncio.gather(*matches)
+        
+        #Current implementation runs all matches in a round concurrently
+        scores = await asyncio.gather(*matches)
+        for i, pair in enumerate(tourn.rounds[j]):
+            for k in range(2):
+                pair[k].points += scores[i][k]
     
     print("Done!")
     await ctx.send(tourn.standings_message())
