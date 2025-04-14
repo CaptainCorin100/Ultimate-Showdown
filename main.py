@@ -120,6 +120,8 @@ class CombatMatch:
             outcome = await self.run_match_contest()
             msg = self.outcome_message(outcome)
             await self.channel.send(msg)
+        await self.channel.send(self.participant_scores.__str__())
+        return self.participant_scores
     
     #Run a round in the match
     async def run_match_contest(self):
@@ -127,7 +129,7 @@ class CombatMatch:
         views:list[ContestOptions] = []
 
         #Iterate between the two participants
-        for parti in [self.participants[0]]:
+        for parti in self.participants:
            view = await create_contest(parti, f"{parti.mention}, you are engaged in a contest in {self.channel.jump_url}.\n How do you respond?")
            views.append(view)
 
@@ -139,8 +141,12 @@ class CombatMatch:
 
         done, pending = await asyncio.wait(tasks, return_when=asyncio.ALL_COMPLETED)
         
-        #Determine and return the outcome
-        outcome = compare_strikes(views[0].strike_type, StrikeType.FORCEFUL)
+        #Determine and return the outcome, and adjust scores
+        outcome = compare_strikes(views[0].strike_type, views[1].strike_type)
+        if outcome == None:
+            self.participant_scores = list(map(lambda x: x + global_data.get("draw_points"), self.participant_scores))
+        else:
+            self.participant_scores[outcome] += global_data.get("win_points")
         return outcome
         
 
@@ -149,7 +155,7 @@ class CombatMatch:
 async def run_match (ctx: commands.Context, participant1:User, participant2:User) -> None:
     combat_match = CombatMatch(participant1, participant2, ctx.channel)
     await ctx.send("Starting match...")
-    await combat_match.run_match()
+    score_change = await combat_match.run_match()
 
 
 ##### Tournament and round commands and classes
