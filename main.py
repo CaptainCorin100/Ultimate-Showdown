@@ -46,7 +46,7 @@ class StrikeType(Enum):
 #Provides a set of buttons to interact with a Contest
 class ContestOptions(View):
     def __init__(self):
-        super().__init__()
+        super().__init__(timeout=None)
         self.strike_type = None
 
     def disable_self (self):
